@@ -1,0 +1,45 @@
+{
+  "$schema": "https://static.cloudbase.net/cli/cloudbaserc.schema.json",
+  "version": "2.0",
+  "envId": "${env:CLOUD_ENV_ID}",
+  "functionRootPath": "./",
+  "functions": [
+    {
+      "name": "hiito-mcp-server",
+      "timeout": 60,
+      "memorySize": 256,
+      "handler": "index.main",
+      "runtime": "Nodejs20",
+      "ignore": [
+        ".git",
+        ".gitignore",
+        "node_modules",
+        "package-lock.json",
+        "src",
+        "*.ts",
+        "tsconfig.json",
+        "Dockerfile",
+        "README.md",
+        "*.md",
+        ".env",
+        ".env.example",
+        ".dockerignore",
+        ".workbuddy",
+        "vitest.config.ts",
+        "coverage"
+      ],
+      "envVariables": {
+        "WECHAT_APP_ID": "${env:WECHAT_APP_ID}",
+        "CLOUD_ENV_ID": "${env:CLOUD_ENV_ID}",
+        "TARGET_ENV_ID": "${env:TARGET_ENV_ID}",
+        "MCP_AUTH_TOKEN": "${env:MCP_AUTH_TOKEN}",
+        "NODE_ENV": "production",
+        "TRANSPORT_MODE": "http",
+        "PORT": "8080",
+        "CHARACTER_LIMIT": "${env:CHARACTER_LIMIT}",
+        "REQUEST_TIMEOUT_MS": "${env:REQUEST_TIMEOUT_MS}"
+      },
+      "installDependency": true
+    }
+  ]
+}

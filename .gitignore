@@ -31,7 +31,6 @@ coverage/
 
 # Sensitive configuration - DO NOT commit
 cloudbaserc.json
-cloudbaserc.*.json
 !.cloudbaserc.example.json
 
 # Internal documentation
