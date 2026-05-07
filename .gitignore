@@ -38,3 +38,6 @@ cloudbaserc.*.json
 **/AUDIT_REPORT.md
 **/LOGIC_AUDIT_REPORT.md
 **/MCP_SQUARE_DEPLOYMENT.md
+
+# CodeBuddy workspace
+.workbuddy/
