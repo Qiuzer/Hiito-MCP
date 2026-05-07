@@ -37,7 +37,13 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "tsx watch src/index.ts",
-    "test": "vitest run"
+    "test": "vitest run",
+    "deploy": "bash deploy.sh",
+    "deploy:all": "bash deploy.sh --all",
+    "deploy:function": "bash deploy.sh --function",
+    "deploy:container": "bash deploy.sh --container",
+    "deploy:build": "bash deploy.sh --build",
+    "publish": "bash deploy.sh --package"
   },
   "dependencies": {
     "@cloudbase/node-sdk": "^3.18.1",

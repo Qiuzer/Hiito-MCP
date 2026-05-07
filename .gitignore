@@ -40,3 +40,6 @@ cloudbaserc.json
 
 # CodeBuddy workspace
 .workbuddy/
+
+# Local deployment guide (do not commit)
+DEPLOY_GUIDE.md
