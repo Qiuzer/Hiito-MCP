@@ -6,6 +6,14 @@
 
 set -e  # 遇到错误立即退出
 
+# 加载 .env 文件（如果存在）
+if [ -f "$(dirname "${BASH_SOURCE[0]}")/.env" ]; then
+    echo "📦 加载 .env 环境变量..."
+    set -a
+    source "$(dirname "${BASH_SOURCE[0]}")/.env"
+    set +a
+fi
+
 # 颜色定义
 RED='\033[0;31m'
 GREEN='\033[0;32m'

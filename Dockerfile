@@ -44,6 +44,17 @@ COPY --from=builder --chown=nodejs:nodejs /app/dist ./dist/
 
 USER nodejs
 
+# Environment variables with defaults
+ENV WECHAT_APP_ID=""
+ENV CLOUD_ENV_ID=""
+ENV TARGET_ENV_ID=""
+ENV MCP_AUTH_TOKEN=""
+ENV NODE_ENV="production"
+ENV TRANSPORT_MODE="http"
+ENV PORT=8080
+ENV CHARACTER_LIMIT=25000
+ENV REQUEST_TIMEOUT_MS=30000
+
 # Health check - port must match CMD PORT (default 8080, non-privileged)
 # CloudBase K8s probe overrides this with its own healthCheckConfig
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
@@ -53,4 +64,4 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
 EXPOSE 8080
 
 # Start the server on port 8080
-CMD ["sh", "-c", "PORT=8080 node dist/index.js"]
+CMD ["node", "dist/index.js"]
