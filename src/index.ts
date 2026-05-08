@@ -22,7 +22,6 @@ import cors from 'cors';
 import rateLimit from 'express-rate-limit';
 import morgan from 'morgan';
 import { registerPartyTools } from './tools/party_tools.js';
-import { registerLinkAndOrganizerTools } from './tools/link_and_organizer_tools.js';
 import { RESPONSE_CONFIG } from './utils/errors.js';
 import { logError } from './utils/errors.js';
 
@@ -85,7 +84,6 @@ function createServer(): McpServer {
     },
   );
   registerPartyTools(server);
-  registerLinkAndOrganizerTools(server);
 
   console.log('✅ MCP tools registered');
 
@@ -98,9 +96,8 @@ function authMiddleware(req: Request, res: Response, next: () => void): void {
   const isProduction = process.env.NODE_ENV === 'production';
   if (!CONFIG.MCP_AUTH_TOKEN) {
     if (isProduction) {
-      console.warn('🔒 MCP_AUTH_TOKEN not set in production - rejecting request');
-      res.status(500).json({ error: 'Server not configured: missing auth token' });
-      return;
+      console.error('🔒 MCP_AUTH_TOKEN not set in production - server shutting down');
+      process.exit(1); // 生产环境强制退出
     }
     // Dev mode: allow without token but log a warning
     console.warn('⚠️ No MCP_AUTH_TOKEN set - running without authentication (dev mode)');
@@ -276,7 +273,7 @@ async function startHTTPServer(server: McpServer): Promise<void> {
   });
 
   // SSE endpoint for MCP Square Hosted mode
-  app.get('/sse', authMiddleware, async (req: Request, res: Response) => {
+  app.get('/sse', authMiddleware, async (_req: Request, res: Response) => {
     // Check if max sessions reached
     if (sseTransports.size >= MAX_SSE_SESSIONS) {
       logError('SSE', new Error('Max sessions reached'));

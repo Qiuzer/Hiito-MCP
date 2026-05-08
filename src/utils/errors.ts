@@ -1,43 +1,6 @@
 /**
- * Hiito MCP Server - Unified Error Handling
+ * Hiito MCP Server - Response Utilities
  */
-
-export enum ErrorCode {
-  // 4xx Client Errors
-  INVALID_PARAMS = 40001,
-  AUTH_FAILED = 40101,
-  AUTH_REQUIRED = 40102,
-  RATE_LIMITED = 42901,
-  SESSION_NOT_FOUND = 40401,
-
-  // 5xx Server Errors
-  INTERNAL_ERROR = 50001,
-  TIMEOUT_ERROR = 50002,
-  UPSTREAM_ERROR = 50003,
-}
-
-/**
- * Custom MCP Error class
- */
-export class MCPError extends Error {
-  constructor(
-    public code: ErrorCode,
-    message: string,
-    public statusCode: number = 500
-  ) {
-    super(message);
-    this.name = 'MCPError';
-  }
-
-  toJSON() {
-    return {
-      error: {
-        code: this.code,
-        message: this.message,
-      },
-    };
-  }
-}
 
 /**
  * Response truncation utility
@@ -64,19 +27,10 @@ export function truncateResponse(text: string, limit?: number): string {
 }
 
 /**
- * Create standardized error responses
- */
-export function createErrorResponse(code: ErrorCode, message: string, statusCode?: number) {
-  return new MCPError(code, message, statusCode);
-}
-
-/**
  * Log error without leaking sensitive information
  */
 export function logError(context: string, error: unknown): void {
-  if (error instanceof MCPError) {
-    console.error(`[${context}] MCPError: code=${error.code}, message=${error.message}`);
-  } else if (error instanceof Error) {
+  if (error instanceof Error) {
     // Only log error class name and message, not stack traces in production
     const logEntry = process.env.NODE_ENV === 'production'
       ? `[${context}] ${error.name}: ${error.message}`

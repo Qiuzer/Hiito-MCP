@@ -1,13 +1,15 @@
 /**
  * CloudBase Service - Cross-environment function invocation
- * Uses CloudBase Node SDK for calling functions across environments
+ *
+ * MCP 环境不存储数据，所有查询通过 callTargetFunction 调用目标环境的云函数。
+ * Tool 层直接调用此函数并传入正确的 functionName、$url 路由和 data 参数。
  */
 
 import CloudBase from '@cloudbase/node-sdk';
 import type { CloudFunctionResponse } from '../types.js';
 
 // Allowed cloud function names (whitelist for security)
-const ALLOWED_FUNCTIONS = new Set(['discover', 'organizer', 'platform']);
+const ALLOWED_FUNCTIONS = new Set(['discover']);
 
 // Lazy-initialized CloudBase app (avoids invalid init if env not set at import time)
 let appInstance: ReturnType<typeof CloudBase.init> | null = null;
@@ -25,6 +27,18 @@ function getApp(): ReturnType<typeof CloudBase.init> {
 
 /**
  * Call a cloud function in the target environment (hiito)
+ *
+ * @param functionName - 目标云函数名称（需在白名单内：discover / organizer / platform）
+ * @param params.$url - 云函数内部路由（由目标云函数解析）
+ * @param params.data - 传递给路由的业务参数
+ * @returns CloudFunctionResponse<T>
+ *
+ * @example
+ * // 查询附近派对
+ * const result = await callTargetFunction('discover', {
+ *   $url: 'queryNearby',
+ *   data: { latitude: 39.9, longitude: 116.4, radius: 5000, limit: 20, offset: 0 },
+ * });
  */
 export async function callTargetFunction<T = unknown>(
   functionName: string,
@@ -45,14 +59,12 @@ export async function callTargetFunction<T = unknown>(
   const app = getApp();
 
   try {
-    // Call function using the SDK
-    // Note: CloudBase Node SDK handles cross-env calls via the initialized app
     const result = await app.callFunction({
       name: functionName,
       data: {
         ...params,
         // Force JSON response
-        $dataType: 'json'
+        $dataType: 'json',
       },
     });
 
@@ -60,7 +72,7 @@ export async function callTargetFunction<T = unknown>(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const resultData = result as any;
 
-    // Check if it's a wrapped response
+    // Check if it's a wrapped response (code/message/data)
     if (resultData.code !== undefined) {
       return resultData as CloudFunctionResponse<T>;
     }
@@ -78,84 +90,4 @@ export async function callTargetFunction<T = unknown>(
       msg: error instanceof Error ? error.message : 'Unknown error',
     };
   }
-}
-
-/**
- * Query nearby parties using the discover cloud function
- */
-export async function queryNearbyParties(params: {
-  latitude: number;
-  longitude: number;
-  radius: number;
-  limit: number;
-  offset: number;
-}) {
-  return callTargetFunction('discover', {
-    $url: 'queryNearby',
-    data: params,
-  });
-}
-
-/**
- * Query party detail by ID
- */
-export async function queryPartyDetail(partyId: string) {
-  return callTargetFunction('discover', {
-    $url: 'queryDetail',
-    data: { party_id: partyId },
-  });
-}
-
-/**
- * Query parties by organizer
- */
-export async function queryPartiesByOrganizer(params: {
-  organizer_id: string;
-  limit: number;
-  offset: number;
-}) {
-  return callTargetFunction('discover', {
-    $url: 'queryByOrganizer',
-    data: params,
-  });
-}
-
-/**
- * Query upcoming parties
- */
-export async function queryUpcomingParties(params: {
-  limit: number;
-  offset: number;
-  days_ahead: number;
-}) {
-  return callTargetFunction('discover', {
-    $url: 'queryUpcoming',
-    data: params,
-  });
-}
-
-/**
- * Get organizer info
- */
-export async function queryOrganizerInfo(organizerId: string) {
-  return callTargetFunction('organizer', {
-    $url: 'getInfo',
-    data: { organizer_id: organizerId },
-  });
-}
-
-/**
- * Generate deep link for party
- */
-export async function generatePartyDeepLink(params: {
-  party_id: string;
-  link_type: 'scheme' | 'link' | 'both';
-  path?: string;
-  query?: Record<string, string>;
-  expire_minutes?: number;
-}) {
-  return callTargetFunction('platform', {
-    $url: 'generateDeepLink',
-    data: params,
-  });
 }

@@ -12,21 +12,14 @@
       "runtime": "Nodejs20",
       "ignore": [
         ".git",
-        ".gitignore",
         "node_modules",
-        "package-lock.json",
-        "src",
         "*.ts",
         "tsconfig.json",
         "Dockerfile",
         "README.md",
         "*.md",
         ".env",
-        ".env.example",
-        ".dockerignore",
-        ".workbuddy",
-        "vitest.config.ts",
-        "coverage"
+        "vitest.config.ts"
       ],
       "envVariables": {
         "WECHAT_APP_ID": "${env:WECHAT_APP_ID}",
