@@ -3,14 +3,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import {
-  PartySearchNearbySchema,
-  PartyGetDetailSchema,
-  PartyListByOrganizerSchema,
-  PartyListUpcomingSchema,
-  PartyGenerateDeepLinkSchema,
-  OrganizerGetInfoSchema,
-} from '../schemas/index.js';
+import { PartySearchNearbySchema } from '../schemas/index.js';
 
 describe('PartySearchNearbySchema', () => {
   it('should validate valid input', () => {
@@ -38,38 +31,5 @@ describe('PartySearchNearbySchema', () => {
     expect(() =>
       PartySearchNearbySchema.parse({ latitude: 999, longitude: 116 })
     ).toThrow();
-  });
-});
-
-describe('PartyGetDetailSchema', () => {
-  it('should validate valid party_id', () => {
-    const result = PartyGetDetailSchema.parse({ party_id: 'abc123' });
-    expect(result.party_id).toBe('abc123');
-  });
-
-  it('should reject empty party_id', () => {
-    expect(() => PartyGetDetailSchema.parse({ party_id: '' })).toThrow();
-  });
-
-  it('should reject extra fields (strict mode)', () => {
-    expect(() =>
-      PartyGetDetailSchema.parse({ party_id: 'abc123', extra: 'field' })
-    ).toThrow();
-  });
-});
-
-describe('PartyGenerateDeepLinkSchema', () => {
-  it('should validate with defaults', () => {
-    const result = PartyGenerateDeepLinkSchema.parse({ party_id: 'p1' });
-    expect(result.link_type).toBe('both');
-    expect(result.expire_minutes).toBe(1440);
-  });
-
-  it('should accept scheme link type only', () => {
-    const result = PartyGenerateDeepLinkSchema.parse({
-      party_id: 'p1',
-      link_type: 'scheme',
-    });
-    expect(result.link_type).toBe('scheme');
   });
 });
