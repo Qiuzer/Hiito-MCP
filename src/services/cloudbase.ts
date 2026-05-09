@@ -9,7 +9,7 @@ import CloudBase from '@cloudbase/node-sdk';
 import type { CloudFunctionResponse } from '../types.js';
 
 // Allowed cloud function names (whitelist for security)
-const ALLOWED_FUNCTIONS = new Set(['discover', 'post']);
+const ALLOWED_FUNCTIONS = new Set(['post']);
 
 // Lazy-initialized CloudBase app (avoids invalid init if env not set at import time)
 let appInstance: ReturnType<typeof CloudBase.init> | null = null;
@@ -28,14 +28,14 @@ function getApp(): ReturnType<typeof CloudBase.init> {
 /**
  * Call a cloud function in the target environment (hiito)
  *
- * @param functionName - 目标云函数名称（需在白名单内：discover / post）
+ * @param functionName - 目标云函数名称（需在白名单内：post）
  * @param params.$url - 云函数内部路由（由目标云函数解析）
  * @param params.data - 传递给路由的业务参数
  * @returns CloudFunctionResponse<T>
  *
  * @example
  * // 查询附近派对
- * const result = await callTargetFunction('discover', {
+ * const result = await callTargetFunction('post', {
  *   $url: 'queryNearby',
  *   data: { latitude: 39.9, longitude: 116.4, radius: 5000, limit: 20, offset: 0 },
  * });
