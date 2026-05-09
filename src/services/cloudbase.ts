@@ -9,7 +9,7 @@ import CloudBase from '@cloudbase/node-sdk';
 import type { CloudFunctionResponse } from '../types.js';
 
 // Allowed cloud function names (whitelist for security)
-const ALLOWED_FUNCTIONS = new Set(['discover']);
+const ALLOWED_FUNCTIONS = new Set(['discover', 'post']);
 
 // Lazy-initialized CloudBase app (avoids invalid init if env not set at import time)
 let appInstance: ReturnType<typeof CloudBase.init> | null = null;
@@ -28,7 +28,7 @@ function getApp(): ReturnType<typeof CloudBase.init> {
 /**
  * Call a cloud function in the target environment (hiito)
  *
- * @param functionName - 目标云函数名称（需在白名单内：discover / organizer / platform）
+ * @param functionName - 目标云函数名称（需在白名单内：discover / post）
  * @param params.$url - 云函数内部路由（由目标云函数解析）
  * @param params.data - 传递给路由的业务参数
  * @returns CloudFunctionResponse<T>
@@ -43,6 +43,7 @@ function getApp(): ReturnType<typeof CloudBase.init> {
 export async function callTargetFunction<T = unknown>(
   functionName: string,
   params: {
+    type?: string;
     $url: string;
     data?: Record<string, unknown>;
   }
@@ -68,20 +69,25 @@ export async function callTargetFunction<T = unknown>(
       },
     });
 
-    // Handle response - CloudBase SDK returns data directly or with code wrapper
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const resultData = result as any;
+    // Type guard for wrapped response (code/message/data)
+    const hasCode = (value: unknown): value is { code: number; message?: string; msg?: string; data?: unknown } => {
+      return typeof value === 'object' && value !== null && 'code' in value;
+    };
 
-    // Check if it's a wrapped response (code/message/data)
-    if (resultData.code !== undefined) {
-      return resultData as CloudFunctionResponse<T>;
+    // Check if it's a wrapped response
+    if (hasCode(result)) {
+      return {
+        code: result.code,
+        msg: result.message || result.msg || 'success',
+        data: result.data as T,
+      } as CloudFunctionResponse<T>;
     }
 
     // If result is direct data, wrap it
     return {
       code: 0,
       msg: 'success',
-      data: result as T,
+      data: result as unknown as T,
     };
   } catch (error) {
     console.error(`Error calling ${functionName}:`, error);

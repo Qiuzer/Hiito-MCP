@@ -15,7 +15,6 @@ import { dirname, join } from 'path';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
-import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import express, { Request, Response } from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
@@ -126,46 +125,7 @@ function authMiddleware(req: Request, res: Response, next: () => void): void {
   next();
 }
 
-// SSE Session management with memory limits
-const sseTransports: Map<string, { transport: SSEServerTransport; createdAt: number }> = new Map();
-const MAX_SSE_SESSIONS = 1000; // Maximum concurrent SSE sessions
-const SSE_SESSION_TTL_MS = 60 * 60 * 1000; // 1 hour
-
-// Periodic cleanup of stale SSE sessions and enforcement of max sessions
-setInterval(() => {
-  const now = Date.now();
-  let cleaned = 0;
-
-  // Enforce max sessions: remove oldest sessions if over limit
-  if (sseTransports.size >= MAX_SSE_SESSIONS) {
-    const entries = Array.from(sseTransports.entries())
-      .sort((a, b) => a[1].createdAt - b[1].createdAt);
-
-    // Remove oldest 50% when over limit
-    const toRemove = entries.slice(0, Math.floor(MAX_SSE_SESSIONS / 2));
-    for (const [id, entry] of toRemove) {
-      entry.transport.close?.();
-      sseTransports.delete(id);
-      cleaned++;
-    }
-    console.warn(`[SSE] Session limit reached (${MAX_SSE_SESSIONS}), removed ${cleaned} oldest sessions`);
-  }
-
-  // Clean up expired sessions
-  for (const [sessionId, entry] of sseTransports) {
-    if (now - entry.createdAt > SSE_SESSION_TTL_MS) {
-      entry.transport.close?.();
-      sseTransports.delete(sessionId);
-      cleaned++;
-    }
-  }
-
-  if (cleaned > 0) {
-    console.log(`[SSE] Cleaned up ${cleaned} session(s). Active: ${sseTransports.size}`);
-  }
-}, 5 * 60 * 1000); // Run every 5 minutes
-
-// Start HTTP server mode with SSE support
+// Start HTTP server mode with Streamable HTTP support
 async function startHTTPServer(server: McpServer): Promise<void> {
   const app = express();
 
@@ -235,7 +195,6 @@ async function startHTTPServer(server: McpServer): Promise<void> {
       version: SERVER_VERSION,
       timestamp: new Date().toISOString(),
       uptime: Math.floor(process.uptime()),
-      activeSseSessions: sseTransports.size,
       memory: {
         rss: `${Math.round(memUsage.rss / 1024 / 1024)}MB`,
         heapUsed: `${Math.round(memUsage.heapUsed / 1024 / 1024)}MB`,
@@ -272,60 +231,6 @@ async function startHTTPServer(server: McpServer): Promise<void> {
     }
   });
 
-  // SSE endpoint for MCP Square Hosted mode
-  app.get('/sse', authMiddleware, async (_req: Request, res: Response) => {
-    // Check if max sessions reached
-    if (sseTransports.size >= MAX_SSE_SESSIONS) {
-      logError('SSE', new Error('Max sessions reached'));
-      res.status(503).json({ error: 'Server busy, please try again later' });
-      return;
-    }
-
-    try {
-      const sessionId = randomUUID();
-      const transport = new SSEServerTransport('/message', res);
-      sseTransports.set(sessionId, { transport, createdAt: Date.now() });
-
-      res.on('close', () => {
-        sseTransports.delete(sessionId);
-      });
-
-      await server.connect(transport);
-      console.log(`[SSE] Client connected: ${sessionId.slice(0, 8)}... (active: ${sseTransports.size})`);
-    } catch (error) {
-      logError('SSE', error);
-      if (!res.headersSent) {
-        res.status(500).json({ error: 'SSE connection failed' });
-      }
-    }
-  });
-
-  // Message endpoint for SSE mode
-  app.post('/message', authMiddleware, async (req: Request, res: Response) => {
-    try {
-      const sessionId = req.headers['x-session-id'] as string;
-
-      if (!sessionId) {
-        res.status(400).json({ error: 'Missing session ID' });
-        return;
-      }
-
-      const entry = sseTransports.get(sessionId);
-
-      if (!entry) {
-        res.status(404).json({ error: 'Session not found or expired' });
-        return;
-      }
-
-      await entry.transport.handlePostMessage(req, res, req.body);
-    } catch (error) {
-      logError('SSE-Message', error);
-      if (!res.headersSent) {
-        res.status(500).json({ error: 'Message handling failed' });
-      }
-    }
-  });
-
   // 404 handler
   app.use((_req: Request, res: Response) => {
     res.status(404).json({ error: 'Not found' });
@@ -351,9 +256,6 @@ async function startHTTPServer(server: McpServer): Promise<void> {
     console.log(`🌐 HTTP server running on port ${PORT}`);
     console.log(`   Health check: http://localhost:${PORT}/health`);
     console.log(`   MCP endpoint: http://localhost:${PORT}/mcp`);
-    console.log(`   SSE endpoint: http://localhost:${PORT}/sse`);
-    console.log(`   Message endpoint: http://localhost:${PORT}/message`);
-    console.log(`   Max SSE sessions: ${MAX_SSE_SESSIONS}`);
     console.log(`   Character limit: ${RESPONSE_CONFIG.CHARACTER_LIMIT}`);
   });
 }
