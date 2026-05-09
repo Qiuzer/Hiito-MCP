@@ -220,20 +220,24 @@ app.all('/mcp', authMiddleware, async (req: Request, res: Response) => {
 
       if (sessionId && transports.has(sessionId)) {
         // Reuse existing transport for this session
+        console.log(`♻️ Reusing transport for session: ${sessionId}`);
         transport = transports.get(sessionId)!;
       } else {
         // Create new transport (new session)
+        console.log(`🆕 Creating new transport (sessionId from header: ${sessionId || 'none'})`);
         transport = new StreamableHTTPServerTransport({
           sessionIdGenerator: () => randomUUID(),
           onsessioninitialized: (id) => {
             // Store the transport when session is initialized
+            console.log(`💾 Storing transport for session: ${id}`);
             transports.set(id, transport);
           },
         });
-        
+      
         // Clean up transport when session ends
         transport.onclose = () => {
           if (transport.sessionId) {
+            console.log(`🗑️ Removing transport for session: ${transport.sessionId}`);
             transports.delete(transport.sessionId);
           }
         };
