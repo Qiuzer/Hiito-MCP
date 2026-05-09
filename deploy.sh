@@ -161,8 +161,8 @@ deploy_container() {
         exit 1
     fi
 
-    # 部署容器服务
-    $TCB_CMD svc deploy .
+    # 部署容器服务（使用 tcb deploy 命令）
+    $TCB_CMD deploy . --env-id "$CLOUD_ENV_ID"
     log_success "云托管部署完成"
 }
 
