@@ -54,10 +54,10 @@ Error Handling:
       const parsedArgs = PartySearchNearbySchema.parse(args);
       const { latitude, longitude, radius, limit, offset, response_format } = parsedArgs;
 
-      // 直接调用目标云函数，post → queryNearby 路由
+      // 直接调用目标云函数，post → QueryOrganizerForMCP 路由
       const result = await callTargetFunction<any>('post', {
         type: 'Query',
-        $url: 'queryNearby',
+        $url: 'QueryOrganizerForMCP',
         data: { latitude, longitude, radius, limit, offset },
       });
 

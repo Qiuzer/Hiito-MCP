@@ -9,7 +9,7 @@
       "timeout": 60,
       "memorySize": 256,
       "handler": "index.main",
-      "runtime": "Nodejs20",
+      "runtime": "Nodejs20.19",
       "ignore": [
         ".git",
         "node_modules",

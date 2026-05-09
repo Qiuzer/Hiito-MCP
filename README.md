@@ -13,6 +13,7 @@
 ## ✨ 功能特性
 
 ### 🔍 搜索附近派对
+
 - **`party_search_nearby`** - 根据经纬度和搜索半径，查找附近的派对活动，返回派对名称、地点、距离等信息
 
 ---
@@ -62,15 +63,15 @@ npm run start:http
 
 ### 环境变量
 
-| 变量名 | 必填 | 说明 | 示例值 |
-|--------|------|------|--------|
-| `TARGET_ENV_ID` | ✅ | hiito 生产环境 ID（云间调用目标） | `nut-4gpjbl8q5edaad32` |
-| `WXP_APP_ID` | ✅ | 微信小程序 AppID | `wx25b365a4b50a0958` |
-| `TRANSPORT_MODE` | ❌ | 传输模式：`stdio` 或 `http`（默认 `stdio`） | `stdio` |
-| `PORT` | ❌ | HTTP 模式监听端口（默认 `8080`） | `8080` |
-| `MCP_AUTH_TOKEN` | 🔒 | MCP 认证 Token（HTTP 模式推荐） | - |
-| `NODE_ENV` | ❌ | 环境模式：`production` 或 `development` | `production` |
-| `CORS_ORIGINS` | ❌ | CORS 允许的源列表（逗号分隔） | - |
+| 变量名           | 必填 | 说明                                        | 示例值                 |
+| ---------------- | ---- | ------------------------------------------- | ---------------------- |
+| `TARGET_ENV_ID`  | ✅   | hiito 生产环境 ID（云间调用目标）           | `nut-4gpjbl8q5edaad32` |
+| `WXP_APP_ID`     | ✅   | 微信小程序 AppID                            | `wx25b365a4b50a0958`   |
+| `TRANSPORT_MODE` | ❌   | 传输模式：`stdio` 或 `http`（默认 `stdio`） | `stdio`                |
+| `PORT`           | ❌   | HTTP 模式监听端口（默认 `8080`）            | `8080`                 |
+| `MCP_AUTH_TOKEN` | 🔒   | MCP 认证 Token（HTTP 模式推荐）             | -                      |
+| `NODE_ENV`       | ❌   | 环境模式：`production` 或 `development`     | `production`           |
+| `CORS_ORIGINS`   | ❌   | CORS 允许的源列表（逗号分隔）               | -                      |
 
 > **架构说明**：MCP Server 部署在独立的 `hiito-mcp-prod` 环境（纯代码环境，不存数据），通过 `TARGET_ENV_ID` 云间调用 hiito 生产环境的数据。
 
@@ -81,6 +82,7 @@ npm run start:http
 ## 🎯 应用场景
 
 ### 查询附近派对
+
 ```
 用户: "附近有什么派对？"
 AI: 调用 party_search_nearby 工具（需要经纬度），返回附近派对列表
@@ -194,8 +196,8 @@ tcb fn deploy hiito-mcp-server --envId hiito-mcp-prod-xxxx
 │           environment: nut-4gpjbl8q5edaad32        │
 │                                                     │
 │  ┌────────────────────────────────────────────┐   │
-│  │  discover 云函数                           │   │
-│  │  - 路由：queryNearby                      │   │
+│  │  post 云函数                           │   │
+│  │  - 路由：QueryOrganizerForMCP                   │   │
 │  │  - 功能：地理位置查询（geoNear）           │   │
 │  └────────────────────────────────────────────┘   │
 │                                                     │
@@ -209,15 +211,15 @@ tcb fn deploy hiito-mcp-server --envId hiito-mcp-prod-xxxx
 
 ### 技术栈
 
-| 组件 | 技术栈 |
-|------|----------|
-| **协议标准** | Model Context Protocol (MCP) 1.0 |
-| **传输模式** | stdio / Streamable HTTP |
-| **运行环境** | Node.js 18+ / CloudBase 云函数 |
-| **MCP SDK** | `@modelcontextprotocol/sdk` |
-| **云开发 SDK** | `@cloudbase/node-sdk` |
+| 组件           | 技术栈                                  |
+| -------------- | --------------------------------------- |
+| **协议标准**   | Model Context Protocol (MCP) 1.0        |
+| **传输模式**   | stdio / Streamable HTTP                 |
+| **运行环境**   | Node.js 18+ / CloudBase 云函数          |
+| **MCP SDK**    | `@modelcontextprotocol/sdk`             |
+| **云开发 SDK** | `@cloudbase/node-sdk`                   |
 | **小程序平台** | 微信小程序（AppID: wx25b365a4b50a0958） |
-| **构建工具** | TypeScript + Docker |
+| **构建工具**   | TypeScript + Docker                     |
 
 ---
 
@@ -314,7 +316,7 @@ npx @modelcontextprotocol/inspector
 - ✅ 移除已废弃工具：`generate_deep_link`、`get_party_detail`、`find_parties`、`find_organizer`
 - ✅ 简化代码结构：所有工具定义集中在 `party_tools.ts`
 - ✅ 传输层支持：StdioServerTransport + StreamableHTTPServerTransport
-- ✅ 数据源：通过 `discover` 云函数 `queryNearby` 路由查询
+- ✅ 数据源：通过 `post` 云函数 `QueryOrganizerForMCP` 路由查询
 
 ### v1.0.0 (2026-05-07)
 

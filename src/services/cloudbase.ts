@@ -36,7 +36,7 @@ function getApp(): ReturnType<typeof CloudBase.init> {
  * @example
  * // 查询附近派对
  * const result = await callTargetFunction('post', {
- *   $url: 'queryNearby',
+ *   $url: 'QueryOrganizerForMCP',
  *   data: { latitude: 39.9, longitude: 116.4, radius: 5000, limit: 20, offset: 0 },
  * });
  */

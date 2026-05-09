@@ -1,7 +1,7 @@
 {
   "$schema": "https://static.cloudbase.net/cli/cloudbaserc.schema.json",
   "version": "2.0",
-  "envId": "${env:CLOUD_ENV_ID}",
+  "envId": "hiito-mcp-prod-d7gw3um648ec2ad3a",
   "functionRootPath": "./",
   "functions": [
     {
@@ -34,5 +34,8 @@
       },
       "installDependency": true
     }
-  ]
+  ],
+  "cloudrun": {
+    "name": "hiito-mcp-server"
+  }
 }
