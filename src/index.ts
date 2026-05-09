@@ -203,8 +203,11 @@ async function startHTTPServer(): Promise<void> {
     });
   });
 
-  // MCP endpoint (Streamable HTTP mode) with timeout
-  app.all('/mcp', authMiddleware, async (req: Request, res: Response) => {
+// Session management for StreamableHTTP transport
+const transports = new Map<string, StreamableHTTPServerTransport>();
+
+// MCP endpoint (Streamable HTTP mode) with timeout
+app.all('/mcp', authMiddleware, async (req: Request, res: Response) => {
     const timeoutId = setTimeout(() => {
       if (!res.headersSent) {
         res.status(504).json({ error: 'Request timeout' });
@@ -212,13 +215,33 @@ async function startHTTPServer(): Promise<void> {
     }, CONFIG.REQUEST_TIMEOUT_MS);
 
     try {
-      // Create a new server instance per request (required for StreamableHTTP)
-      const server = createServer();
-      const transport = new StreamableHTTPServerTransport({
-        sessionIdGenerator: () => randomUUID(),
-      });
+      const sessionId = req.headers['mcp-session-id'] as string | undefined;
+      let transport: StreamableHTTPServerTransport;
 
-      await server.connect(transport);
+      if (sessionId && transports.has(sessionId)) {
+        // Reuse existing transport for this session
+        transport = transports.get(sessionId)!;
+      } else {
+        // Create new transport (new session)
+        transport = new StreamableHTTPServerTransport({
+          sessionIdGenerator: () => randomUUID(),
+          onsessioninitialized: (id) => {
+            // Store the transport when session is initialized
+            transports.set(id, transport);
+          },
+        });
+        
+        // Clean up transport when session ends
+        transport.onclose = () => {
+          if (transport.sessionId) {
+            transports.delete(transport.sessionId);
+          }
+        };
+
+        const server = createServer();
+        await server.connect(transport);
+      }
+
       await transport.handleRequest(req, res, req.body);
     } catch (error) {
       logError('MCP', error);
