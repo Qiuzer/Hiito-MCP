@@ -31,6 +31,11 @@ export const PartySearchNearbySchema = z.object({
     .min(0)
     .default(0)
     .describe('分页偏移量，默认 0'),
+  skip: z.number()
+    .int('skip 必须为整数')
+    .min(0)
+    .default(0)
+    .describe('跳过记录数，默认 0'),
   response_format: z.nativeEnum(ResponseFormat)
     .default(ResponseFormat.MARKDOWN)
     .describe('响应格式，默认 MARKDOWN'),

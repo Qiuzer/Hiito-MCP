@@ -43,3 +43,8 @@ cloudbaserc.json
 
 # Local deployment guide (do not commit)
 DEPLOY_GUIDE.md
+
+# Local test scripts (do not commit)
+test-*.mjs
+test-*.ts
+test-*.js
