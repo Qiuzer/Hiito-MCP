@@ -41,6 +41,9 @@ cloudbaserc.json
 # CodeBuddy workspace
 .workbuddy/
 
+# mcporter local config
+config/mcporter.json
+
 # Local deployment guide (do not commit)
 DEPLOY_GUIDE.md
 
