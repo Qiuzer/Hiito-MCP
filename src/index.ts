@@ -15,7 +15,8 @@ import { dirname, join } from 'path';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
-import express, { Request, Response } from 'express';
+import express from 'express';
+import { Request, Response } from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
 import rateLimit from 'express-rate-limit';
@@ -126,7 +127,7 @@ function authMiddleware(req: Request, res: Response, next: () => void): void {
 }
 
 // Start HTTP server mode with Streamable HTTP support
-async function startHTTPServer(server: McpServer): Promise<void> {
+async function startHTTPServer(): Promise<void> {
   const app = express();
 
   // Security headers - CSP allows SSE connections and Tencent Cloud domains
@@ -211,6 +212,8 @@ async function startHTTPServer(server: McpServer): Promise<void> {
     }, CONFIG.REQUEST_TIMEOUT_MS);
 
     try {
+      // Create a new server instance per request (required for StreamableHTTP)
+      const server = createServer();
       const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: () => randomUUID(),
       });
@@ -287,7 +290,7 @@ async function main(): Promise<void> {
   const mode = process.env.TRANSPORT_MODE || 'stdio';
 
   if (mode === 'http') {
-    await startHTTPServer(server);
+    await startHTTPServer();
   } else {
     await startStdioServer(server);
   }
