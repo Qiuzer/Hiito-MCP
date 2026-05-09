@@ -21,31 +21,7 @@ export function registerPartyTools(server: McpServer) {
     'party_search_nearby',
     {
       title: 'Search Nearby Parties',
-      description: `搜索附近的派对活动（车尾派对/螺母派对）。
-
-根据经纬度和搜索半径，返回附近的派对列表，包含派对名称、地点、距离、时间、参与人数等信息。
-
-Args:
-  - latitude (number): 纬度，范围 -90 ~ 90，例如 39.9042（北京市中心）
-  - longitude (number): 经度，范围 -180 ~ 180，例如 116.4074（北京市中心）
-  - radius (number): 搜索半径（米），默认 5000，范围 100 ~ 50000
-  - limit (number): 最多返回结果数，默认 20，范围 1 ~ 50
-  - offset (number): 分页偏移量，默认 0
-  - response_format ('markdown' | 'json'): 响应格式，默认 'markdown'
-
-Returns:
-  - Markdown 格式：格式化的派对列表，包含标题、地点、距离、时间、人数、状态等信息
-  - JSON 格式：结构化数据数组，每个对象包含 title, address, start_time, distance, status 等字段
-  - 分页信息：count, offset, has_more, next_offset
-
-Examples:
-  - 使用场景: "北京朝阳公园附近有什么派对" → latitude=39.9342, longitude=116.4103, radius=5000
-  - 使用场景: "上海外滩周边10公里内的派对" → latitude=31.2304, longitude=121.4737, radius=10000
-  - 不适用场景: 需要创建派对（此工具仅查询，不创建）
-
-Error Handling:
-  - 返回 "查询失败: ..." 如果 API 调用失败，请检查经纬度是否有效
-  - 返回 "暂无派对活动" 如果指定范围内没有派对`,
+      description: `搜索附近的派对活动（车尾派对/螺母派对）。根据经纬度和搜索半径返回派对列表，包含名称、地点、距离、时间等信息。\n\n示例：\n- "北京朝阳公园附近有什么派对" → latitude=39.9342, longitude=116.4103, radius=5000\n- "上海外滩周边10公里内的派对" → latitude=31.2304, longitude=121.4737, radius=10000\n\n注意：仅支持查询，不支持创建派对。`,
       inputSchema: PartySearchNearbySchema,
       outputSchema: z.object({ content: z.object({ type: z.literal('string') }) }),
       annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -54,11 +30,36 @@ Error Handling:
       const parsedArgs = PartySearchNearbySchema.parse(args);
       const { latitude, longitude, radius, limit, offset, skip, response_format } = parsedArgs;
 
+      // === 幂等性保证：输入参数规范化 ===
+      // 1. 经纬度精度统一为 6 位小数（约 0.1 米，消除浮点精度差异导致的不一致）
+      const normalizedLat = Number(latitude.toFixed(6));
+      const normalizedLng = Number(longitude.toFixed(6));
+
+      // 2. 分页参数去歧义：skip 与 offset 语义相同，统一使用 offset（取较大值保证向后兼容）
+      const normalizedOffset = Math.max(offset, skip);
+
+      // 3. 生成确定性请求 ID：相同参数始终产生相同的 request_id，便于后端缓存/去重
+      const requestId = [
+        'psn',
+        normalizedLat,
+        normalizedLng,
+        radius,
+        limit,
+        normalizedOffset,
+      ].join('_');
+
       // 直接调用目标云函数，post → QueryOrganizerForMCP 路由
       const result = await callTargetFunction<any>('post', {
         type: 'Query',
         $url: 'QueryOrganizerForMCP',
-        data: { latitude, longitude, radius, skip, limit, offset },
+        request_id: requestId,
+        data: {
+          latitude: normalizedLat,
+          longitude: normalizedLng,
+          radius,
+          limit,
+          offset: normalizedOffset,
+        },
       });
 
       if (result.code !== 0) {
@@ -72,11 +73,39 @@ Error Handling:
         };
       }
 
-      const parties = result.data as unknown as Array<Record<string, unknown>>;
-      const partiesList = Array.isArray(parties) ? parties : [];
+      // 兼容后端返回格式：支持纯数组或 { list/data, total } 包装对象
+      const rawData = result.data;
+      let partiesList: Array<Record<string, unknown>> = [];
+      let totalCount: number | undefined;
+
+      if (Array.isArray(rawData)) {
+        partiesList = rawData;
+      } else if (rawData && typeof rawData === 'object') {
+        const dataObj = rawData as Record<string, unknown>;
+        if (Array.isArray(dataObj.list)) {
+          partiesList = dataObj.list as Array<Record<string, unknown>>;
+        } else if (Array.isArray(dataObj.data)) {
+          partiesList = dataObj.data as Array<Record<string, unknown>>;
+        }
+        if (typeof dataObj.total === 'number') {
+          totalCount = dataObj.total;
+        }
+      }
+
+      // 分页状态计算：优先使用后端返回的 total，否则使用保守启发式
+      const hasMore = totalCount !== undefined
+        ? (normalizedOffset + partiesList.length) < totalCount
+        : partiesList.length >= limit;
 
       // 构建结构化输出
       const structuredOutput = {
+        query: {
+          latitude: normalizedLat,
+          longitude: normalizedLng,
+          radius,
+          limit,
+          offset: normalizedOffset,
+        },
         parties: partiesList.map((p) => ({
           title: p.title || '未知派对',
           address: p.address || '未知地点',
@@ -89,9 +118,10 @@ Error Handling:
           url_link: p.url_link,
         })),
         count: partiesList.length,
-        offset: offset,
-        has_more: partiesList.length === limit,
-        next_offset: partiesList.length === limit ? offset + limit : undefined,
+        offset: normalizedOffset,
+        total: totalCount,
+        has_more: hasMore,
+        next_offset: hasMore ? normalizedOffset + limit : undefined,
       };
 
       const formattedText = formatPartyListMarkdown(partiesList, response_format);
