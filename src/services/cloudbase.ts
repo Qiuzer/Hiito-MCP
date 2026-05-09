@@ -1,99 +1,139 @@
 /**
  * CloudBase Service - Cross-environment function invocation
- *
- * MCP 环境不存储数据，所有查询通过 callTargetFunction 调用目标环境的云函数。
- * Tool 层直接调用此函数并传入正确的 functionName、$url 路由和 data 参数。
+ * 
+ * 核心逻辑：MCP 环境通过 Secret 鉴权，跨环境调用目标数据源环境的云函数。
  */
 
 import CloudBase from '@cloudbase/node-sdk';
 import type { CloudFunctionResponse } from '../types.js';
 
-// Allowed cloud function names (whitelist for security)
-const ALLOWED_FUNCTIONS = new Set(['post']);
+// --- 类型定义 ---
 
-// Lazy-initialized CloudBase app (avoids invalid init if env not set at import time)
+/**
+ * 腾讯云 SDK callFunction 的标准返回结构
+ */
+interface CloudBaseCallResult {
+  result: any;
+  requestId: string;
+}
+
+// --- 常量配置 ---
+
+// 允许调用的云函数白名单（安全策略）
+const ALLOWED_FUNCTIONS = new Set(['post']);
+const DEFAULT_TIMEOUT = 15000;
+
+// 单例实例
 let appInstance: ReturnType<typeof CloudBase.init> | null = null;
 
-function getApp(): ReturnType<typeof CloudBase.init> {
-  if (!appInstance) {
-    const envId = process.env.TARGET_ENV_ID;
-    if (!envId) {
-      throw new Error('TARGET_ENV_ID is not configured');
-    }
-    appInstance = CloudBase.init({ env: envId });
+/**
+ * 初始化或获取 CloudBase 实例 (单例模式)
+ */
+function getAppInstance(): ReturnType<typeof CloudBase.init> {
+  if (appInstance) return appInstance;
+
+  const {
+    TARGET_ENV_ID: envId,
+    TENCENT_SECRET_ID: secretId,
+    TENCENT_SECRET_KEY: secretKey,
+  } = process.env;
+
+  if (!envId || !secretId || !secretKey) {
+    throw new Error(
+      `[Config Error] 缺少环境变量: ${!envId ? 'TARGET_ENV_ID ' : ''}${!secretId ? 'TENCENT_SECRET_ID ' : ''
+      }${!secretKey ? 'TENCENT_SECRET_KEY' : ''}`
+    );
   }
+
+  appInstance = CloudBase.init({
+    env: envId,
+    secretId,
+    secretKey,
+    timeout: DEFAULT_TIMEOUT,
+  });
+
   return appInstance;
 }
 
 /**
- * Call a cloud function in the target environment (hiito)
- *
- * @param functionName - 目标云函数名称（需在白名单内：post）
- * @param params.$url - 云函数内部路由（由目标云函数解析）
- * @param params.data - 传递给路由的业务参数
- * @returns CloudFunctionResponse<T>
- *
- * @example
- * // 查询附近派对
- * const result = await callTargetFunction('post', {
- *   $url: 'QueryOrganizerForMCP',
- *   data: { latitude: 39.9, longitude: 116.4, radius: 5000, limit: 20, offset: 0 },
- * });
+ * 响应标准化处理函数
+ * 确保不论目标函数返回什么格式，MCP 获取到的结构始终统一
+ */
+function normalizeResponse<T>(rawResult: any): CloudFunctionResponse<T> {
+  // 如果目标函数返回了标准结构 { code, data, msg }
+  if (rawResult && typeof rawResult === 'object' && 'code' in rawResult) {
+    return {
+      code: rawResult.code,
+      msg: rawResult.message || rawResult.msg || 'success',
+      data: rawResult.data as T,
+    };
+  }
+
+  // 如果目标函数直接返回了原始数据
+  return {
+    code: 0,
+    msg: 'success',
+    data: rawResult as T,
+  };
+}
+
+/**
+ * 跨环境调用目标函数
+ * 
+ * @param functionName 目标环境的云函数名 (如: 'post')
+ * @param params 包含 $url (路由) 和 data (业务参数)
  */
 export async function callTargetFunction<T = unknown>(
   functionName: string,
   params: {
     type?: string;
     $url: string;
-    data?: Record<string, unknown>;
+    data?: Record<string, any>;
+    request_id?: string;
   }
 ): Promise<CloudFunctionResponse<T>> {
-  // Validate function name against whitelist
+  // 1. 安全校验
   if (!ALLOWED_FUNCTIONS.has(functionName)) {
-    console.warn(`⚠️ Blocked call to non-whitelisted function: ${functionName}`);
-    return {
-      code: -1,
-      msg: `Unknown function: ${functionName}`,
-    };
+    console.error(`[Security] 拦截非法函数调用: ${functionName}`);
+    return { code: 403, msg: `Forbidden: Function ${functionName} not whitelisted` };
   }
 
-  const app = getApp();
+  if (!params.$url) {
+    return { code: 400, msg: 'Missing routing path ($url)' };
+  }
+
+  const app = getAppInstance();
 
   try {
-    const result = await app.callFunction({
+    // 2. 执行跨环境调用
+    // 使用类型断言解决 ts(7022) requestId 隐式 any 问题
+    const { result, requestId } = (await app.callFunction({
       name: functionName,
       data: {
         ...params,
-        // Force JSON response
         $dataType: 'json',
       },
+    })) as CloudBaseCallResult;
+
+    // 日志记录，方便链路追踪
+    console.log(`[RPC Success] ${functionName}@${params.$url} | RequestID: ${requestId}`);
+
+    // 3. 返回标准化结果
+    return normalizeResponse<T>(result);
+
+  } catch (error: any) {
+    // 4. 错误捕获与分类
+    const errorMsg = error?.message || 'Unknown Internal Error';
+    const errorCode = error?.code || 'INTERNAL_ERROR';
+
+    console.error(`[RPC Error] Call ${functionName}@${params.$url} failed:`, {
+      code: errorCode,
+      message: errorMsg
     });
 
-    // Type guard for wrapped response (code/message/data)
-    const hasCode = (value: unknown): value is { code: number; message?: string; msg?: string; data?: unknown } => {
-      return typeof value === 'object' && value !== null && 'code' in value;
-    };
-
-    // Check if it's a wrapped response
-    if (hasCode(result)) {
-      return {
-        code: result.code,
-        msg: result.message || result.msg || 'success',
-        data: result.data as T,
-      } as CloudFunctionResponse<T>;
-    }
-
-    // If result is direct data, wrap it
     return {
-      code: 0,
-      msg: 'success',
-      data: result as unknown as T,
-    };
-  } catch (error) {
-    console.error(`Error calling ${functionName}:`, error);
-    return {
-      code: -1,
-      msg: error instanceof Error ? error.message : 'Unknown error',
+      code: errorCode === 'DATABASE_PERMISSION_DENIED' ? 403 : 500,
+      msg: `Bridge Error: ${errorMsg}`,
     };
   }
 }
