@@ -55,9 +55,9 @@ Error Handling:
       const { latitude, longitude, radius, limit, offset, response_format } = parsedArgs;
 
       // 直接调用目标云函数，discover → queryNearby 路由
-      const result = await callTargetFunction('post', {
+      const result = await callTargetFunction<any>('discover', {
         type: 'Query',
-        $url: 'QueryOrganizerForMCP',
+        $url: 'queryNearby',
         data: { latitude, longitude, radius, limit, offset },
       });
 
