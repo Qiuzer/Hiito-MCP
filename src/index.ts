@@ -1,9 +1,9 @@
 /**
- * Hiito MCP Server - Optimized for Stability & Idempotency
+ * Hiito MCP Server - Optimized for Cloud Hosting (Stateless)
  */
 
 import 'dotenv/config';
-import { randomUUID } from 'crypto';
+import { randomUUID, timingSafeEqual } from 'crypto';
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
@@ -25,17 +25,14 @@ const pkg = JSON.parse(readFileSync(join(__dirname, '../package.json'), 'utf-8')
 const CONFIG = {
   ENV: process.env.NODE_ENV || 'development',
   PORT: parseInt(process.env.PORT || '8080', 10),
-  REQUEST_TIMEOUT: parseInt(process.env.REQUEST_TIMEOUT_MS || '30000', 10),
+  TENCENT_SECRET_ID: process.env.TENCENT_SECRET_ID,
+  // 外层守卫超时需大于 CloudBase SDK 超时(20s)，小于云托管网关超时
+  REQUEST_TIMEOUT: parseInt(process.env.REQUEST_TIMEOUT_MS || '25000', 10),
   VERSION: pkg.version ?? '1.0.0',
 };
 
-// --- 会话持久化存储 (幂等性核心) ---
-// 如果是多实例部署，建议将此处替换为 Redis 存储
-const sessionTransports = new Map<string, StreamableHTTPServerTransport>();
-
 /**
- * 优化 1: 工厂函数封装
- * 保证 MCP Server 实例的配置逻辑统一
+ * 工厂函数：创建 MCP Server 实例
  */
 function createMcpInstance() {
   const server = new McpServer(
@@ -47,16 +44,42 @@ function createMcpInstance() {
 }
 
 /**
- * 免鉴权中间件
- * HTTP + SSE 模式下直接放行所有请求
+ * 身份验证中间件
+ * 支持时间等值比较，防止侧信道攻击
  */
 function authMiddleware(req: Request, res: Response, next: NextFunction) {
-  next(); // 直接放行
+  const authHeader = req.headers.authorization;
+
+  // 信任腾讯云网关签名请求
+  if (authHeader?.startsWith('TC3')) return next();
+
+  // 无需校验则跳过
+  if (!CONFIG.TENCENT_SECRET_ID) return next();
+
+  if (!authHeader?.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  const token = authHeader.slice(7);
+  const expected = Buffer.from(CONFIG.TENCENT_SECRET_ID);
+  const actual = Buffer.from(token);
+
+  if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) {
+    return res.status(401).json({ error: 'Invalid token' });
+  }
+
+  next();
 }
 
 /**
- * 优化 3: HTTP Server 逻辑优化
- * 解决会话竞争与内存泄漏隐患
+ * HTTP Server（无状态模式）
+ *
+ * 设计原则：
+ * - 云托管为多实例部署，不在内存中维护任何 session
+ * - 每次请求独立创建 transport + MCP server 实例
+ * - 通过 Promise + resolveInit 桥接 onsessioninitialized 回调
+ * - 等待初始化完成后再处理请求，确保 server ready
+ * - 超时层级：SDK(20s) < 请求守卫(25s) < 云托管网关(30s)
  */
 async function startHTTPServer() {
   const app = express();
@@ -72,44 +95,50 @@ async function startHTTPServer() {
 
   // MCP 核心接口
   app.all('/mcp', authMiddleware, async (req: Request, res: Response) => {
-    // 幂等标识：优先使用客户端提供的 session-id
-    const sessionId = req.headers['mcp-session-id'] as string;
-
-    // 设置请求超时守卫
+    const reqStart = Date.now();
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), CONFIG.REQUEST_TIMEOUT);
 
     try {
-      let transport: StreamableHTTPServerTransport;
+      // resolveInit 用于在 onsessioninitialized 回调中通知外部 Promise
+      let resolveInit!: () => void;
 
-      // 幂等逻辑：检查是否已有活跃会话
-      if (sessionId && sessionTransports.has(sessionId)) {
-        transport = sessionTransports.get(sessionId)!;
-      } else {
-        // 创建新传输层
-        transport = new StreamableHTTPServerTransport({
-          sessionIdGenerator: () => sessionId || randomUUID(),
-          onsessioninitialized: (id) => {
-            console.log(`[Session] Initialized: ${id}`);
-            sessionTransports.set(id, transport);
-          }
-        });
+      const initTimeout = setTimeout(
+        () => { throw new Error('MCP init timeout'); },
+        5000
+      );
 
-        transport.onclose = () => {
-          if (transport.sessionId) sessionTransports.delete(transport.sessionId);
-        };
+      // 无状态：每次请求独立创建实例，天然支持多实例云托管
+      // onsessioninitialized 必须作为构造参数传入（SDK 类型约束）
+      const transport = new StreamableHTTPServerTransport({
+        sessionIdGenerator: () => randomUUID(),
+        onsessioninitialized: (sessionId: string) => {
+          clearTimeout(initTimeout);
+          console.log(`[Session] Ready: ${sessionId} | init: ${Date.now() - reqStart}ms`);
+          resolveInit();
+        },
+      });
 
-        const mcpServer = createMcpInstance();
-        await mcpServer.connect(transport);
-      }
+      const mcpServer = createMcpInstance();
 
-      // 处理请求
+      // 等待 onsessioninitialized 回调触发，确保 server 真正 ready 后再处理请求
+      await new Promise<void>((resolve, reject) => {
+        resolveInit = resolve;
+        mcpServer.connect(transport).catch(reject);
+      });
+
       await transport.handleRequest(req, res, req.body);
+
+      console.log(`[Request] Completed in ${Date.now() - reqStart}ms`);
     } catch (error: any) {
+      const elapsed = Date.now() - reqStart;
+
       if (error.name === 'AbortError') {
+        console.warn(`[Request] Timeout after ${elapsed}ms`);
         if (!res.headersSent) res.status(504).json({ error: 'Gateway Timeout' });
       } else {
         logError('MCP_TRANSPORT', error);
+        console.error(`[Request] Failed after ${elapsed}ms:`, error.message);
         if (!res.headersSent) res.status(500).json({ error: 'Internal Error' });
       }
     } finally {
@@ -118,15 +147,17 @@ async function startHTTPServer() {
   });
 
   // 健康检查
-  app.get('/health', (req, res) => res.json({ status: 'ok', uptime: process.uptime() }));
+  app.get('/health', (req, res) =>
+    res.json({ status: 'ok', uptime: process.uptime(), version: CONFIG.VERSION })
+  );
 
   app.listen(CONFIG.PORT, () => {
-    console.log(`🌐 Server active on port ${CONFIG.PORT} [Mode: HTTP]`);
+    console.log(`🌐 Server active on port ${CONFIG.PORT} [Mode: HTTP | Stateless]`);
   });
 }
 
 /**
- * 优化 4: 入口点逻辑简化
+ * 入口点
  */
 async function main() {
   const mode = process.env.TRANSPORT_MODE || 'stdio';
@@ -141,7 +172,7 @@ async function main() {
   }
 }
 
-main().catch(err => {
+main().catch((err) => {
   logError('FATAL_INIT', err);
   process.exit(1);
 });
