@@ -3,13 +3,13 @@
  */
 
 import 'dotenv/config';
-import { randomUUID, timingSafeEqual } from 'crypto';
+import { timingSafeEqual } from 'crypto';
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import express, { Request, Response, NextFunction } from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
@@ -26,7 +26,6 @@ const CONFIG = {
   ENV: process.env.NODE_ENV || 'development',
   PORT: parseInt(process.env.PORT || '8080', 10),
   TENCENT_SECRET_ID: process.env.TENCENT_SECRET_ID,
-  // 外层守卫超时需大于 CloudBase SDK 超时(20s)，小于云托管网关超时
   REQUEST_TIMEOUT: parseInt(process.env.REQUEST_TIMEOUT_MS || '25000', 10),
   VERSION: pkg.version ?? '1.0.0',
 };
@@ -45,7 +44,6 @@ function createMcpInstance() {
 
 /**
  * 身份验证中间件
- * 支持时间等值比较，防止侧信道攻击
  */
 function authMiddleware(req: Request, res: Response, next: NextFunction) {
   const authHeader = req.headers.authorization;
@@ -53,7 +51,7 @@ function authMiddleware(req: Request, res: Response, next: NextFunction) {
   // 信任腾讯云网关签名请求
   if (authHeader?.startsWith('TC3')) return next();
 
-  // 无需校验则跳过
+  // 未配置 TENCENT_SECRET_ID 则跳过校验（公开访问）
   if (!CONFIG.TENCENT_SECRET_ID) return next();
 
   if (!authHeader?.startsWith('Bearer ')) {
@@ -72,17 +70,17 @@ function authMiddleware(req: Request, res: Response, next: NextFunction) {
 }
 
 /**
- * HTTP Server（无状态模式）
+ * HTTP Server（SSE 模式）
  *
  * 设计原则：
- * - 云托管为多实例部署，不在内存中维护任何 session
- * - 每次请求独立创建 transport + MCP server 实例
- * - 通过 Promise + resolveInit 桥接 onsessioninitialized 回调
- * - 等待初始化完成后再处理请求，确保 server ready
- * - 超时层级：SDK(20s) < 请求守卫(25s) < 云托管网关(30s)
+ * - 每个客户端连接独立创建 server + transport，避免 "already initialized" 错误
+ * - session 存储在内存 Map 中，CloudBase 需配置单实例运行
  */
 async function startHTTPServer() {
   const app = express();
+
+  // 信任腾讯云托管反向代理，解决 express-rate-limit ERR_ERL_FORWARDED_HEADER 错误
+  app.set('trust proxy', 1);
 
   // 基础安全中间件
   app.use(helmet());
@@ -93,66 +91,65 @@ async function startHTTPServer() {
   // 速率限制
   app.use(rateLimit({ windowMs: 15 * 60 * 1000, max: 100 }));
 
-  // MCP 核心接口
-  app.all('/mcp', authMiddleware, async (req: Request, res: Response) => {
+  // 内存中维护 SSE session（单实例运行，多实例需要 Redis 等共享存储）
+  const sessions = new Map<string, SSEServerTransport>();
+
+  // GET /mcp —— 建立 SSE 连接（每个客户端独立 server + transport）
+  app.get('/mcp', authMiddleware, async (_req: Request, res: Response) => {
+    try {
+      const transport = new SSEServerTransport('/mcp/messages', res);
+      const mcpServer = createMcpInstance();
+      await mcpServer.connect(transport);
+
+      sessions.set(transport.sessionId, transport);
+      console.log(`[Session] Opened: ${transport.sessionId}`);
+
+      res.on('close', () => {
+        sessions.delete(transport.sessionId);
+        console.log(`[Session] Closed: ${transport.sessionId}`);
+      });
+    } catch (error: any) {
+      logError('MCP_SSE_CONNECT', error);
+      console.error('[SSE] Connection failed:', error.message);
+      if (!res.headersSent) {
+        res.status(500).json({ error: 'Internal Error' });
+      }
+    }
+  });
+
+  // POST /mcp/messages —— 接收 JSON-RPC 消息
+  app.post('/mcp/messages', authMiddleware, async (req: Request, res: Response) => {
     const reqStart = Date.now();
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), CONFIG.REQUEST_TIMEOUT);
+    const sessionId = req.query.sessionId as string;
+
+    if (!sessionId) {
+      return res.status(400).json({ error: 'Missing sessionId query parameter' });
+    }
+
+    const transport = sessions.get(sessionId);
+    if (!transport) {
+      return res.status(404).json({ error: 'Session not found' });
+    }
 
     try {
-      // resolveInit 用于在 onsessioninitialized 回调中通知外部 Promise
-      let resolveInit!: () => void;
-
-      const initTimeout = setTimeout(
-        () => { throw new Error('MCP init timeout'); },
-        5000
-      );
-
-      // 无状态：每次请求独立创建实例，天然支持多实例云托管
-      // onsessioninitialized 必须作为构造参数传入（SDK 类型约束）
-      const transport = new StreamableHTTPServerTransport({
-        sessionIdGenerator: () => randomUUID(),
-        onsessioninitialized: (sessionId: string) => {
-          clearTimeout(initTimeout);
-          console.log(`[Session] Ready: ${sessionId} | init: ${Date.now() - reqStart}ms`);
-          resolveInit();
-        },
-      });
-
-      const mcpServer = createMcpInstance();
-
-      // 等待 onsessioninitialized 回调触发，确保 server 真正 ready 后再处理请求
-      await new Promise<void>((resolve, reject) => {
-        resolveInit = resolve;
-        mcpServer.connect(transport).catch(reject);
-      });
-
-      await transport.handleRequest(req, res, req.body);
-
-      console.log(`[Request] Completed in ${Date.now() - reqStart}ms`);
+      await transport.handlePostMessage(req, res, req.body);
+      console.log(`[Message] Session ${sessionId} processed in ${Date.now() - reqStart}ms`);
     } catch (error: any) {
-      const elapsed = Date.now() - reqStart;
-
-      if (error.name === 'AbortError') {
-        console.warn(`[Request] Timeout after ${elapsed}ms`);
-        if (!res.headersSent) res.status(504).json({ error: 'Gateway Timeout' });
-      } else {
-        logError('MCP_TRANSPORT', error);
-        console.error(`[Request] Failed after ${elapsed}ms:`, error.message);
-        if (!res.headersSent) res.status(500).json({ error: 'Internal Error' });
+      logError('MCP_MESSAGE', error);
+      console.error(`[Message] Session ${sessionId} failed:`, error.message);
+      if (!res.headersSent) {
+        res.status(500).json({ error: 'Internal Error' });
       }
-    } finally {
-      clearTimeout(timeout);
     }
   });
 
   // 健康检查
-  app.get('/health', (req, res) =>
+  app.get('/health', (_req, res) =>
     res.json({ status: 'ok', uptime: process.uptime(), version: CONFIG.VERSION })
   );
 
   app.listen(CONFIG.PORT, () => {
-    console.log(`🌐 Server active on port ${CONFIG.PORT} [Mode: HTTP | Stateless]`);
+    console.log(`🌐 Server active on port ${CONFIG.PORT} [Mode: SSE | Multi-session]`);
   });
 }
 
