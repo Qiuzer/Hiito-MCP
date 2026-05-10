@@ -3,7 +3,7 @@
  */
 
 import 'dotenv/config';
-import { randomUUID, timingSafeEqual } from 'crypto';
+import { randomUUID } from 'crypto';
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
@@ -25,7 +25,6 @@ const pkg = JSON.parse(readFileSync(join(__dirname, '../package.json'), 'utf-8')
 const CONFIG = {
   ENV: process.env.NODE_ENV || 'development',
   PORT: parseInt(process.env.PORT || '8080', 10),
-  TENCENT_SECRET_ID: process.env.TENCENT_SECRET_ID,
   REQUEST_TIMEOUT: parseInt(process.env.REQUEST_TIMEOUT_MS || '30000', 10),
   VERSION: pkg.version ?? '1.0.0',
 };
@@ -48,30 +47,11 @@ function createMcpInstance() {
 }
 
 /**
- * 优化 2: 增强的身份验证
- * 支持安全的时间等值比较，防止侧信道攻击
+ * 免鉴权中间件
+ * HTTP + SSE 模式下直接放行所有请求
  */
 function authMiddleware(req: Request, res: Response, next: NextFunction) {
-  const authHeader = req.headers.authorization;
-
-  // 1. 信任腾讯云网关签名请求
-  if (authHeader?.startsWith('TC3')) return next();
-
-  // 2. 校验 Bearer Token
-  if (!CONFIG.TENCENT_SECRET_ID) return next(); // 无需校验则跳过
-
-  if (!authHeader?.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-
-  const token = authHeader.slice(7);
-  const expected = Buffer.from(CONFIG.TENCENT_SECRET_ID);
-  const actual = Buffer.from(token);
-
-  if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) {
-    return res.status(401).json({ error: 'Invalid token' });
-  }
-  next();
+  next(); // 直接放行
 }
 
 /**

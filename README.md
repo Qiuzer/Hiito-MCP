@@ -4,222 +4,209 @@
 [![GitHub stars](https://img.shields.io/github/stars/Qiuzer/Hiito-MCP.svg)](https://github.com/Qiuzer/Hiito-MCP)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-让 AI 助手帮你发现附近的车尾派对活动，一键生成小程序打开链接。
+让 AI 助手帮你发现附近的车尾派对活动。
 
 > **MCP (Model Context Protocol)** 服务器，为 Claude Desktop、Cursor、Cline 等 AI 客户端提供查询螺母车尾派对的能力。
 
 ---
 
-## ✨ 功能特性
+## 🎯 一分钟使用
 
-### 🔍 搜索附近派对
+### 推荐：腾讯云 MCP 广场一键开通
 
-- **`party_search_nearby`** - 根据经纬度和搜索半径，查找附近的派对活动，返回派对名称、地点、距离等信息
+1. 访问 [腾讯云 MCP 广场](https://cloud.tencent.com/developer/mcp)
+2. 搜索 **"螺母车尾派对"** 或 **"Hiito"**
+3. 一键开通，无需配置
 
----
+开通后，在任意支持 MCP 的 AI 客户端中即可使用。
 
-## 🚀 快速开始
+> **为什么推荐 MCP 广场？** 本项目依赖腾讯云 CloudBase 专有环境与密钥，本地运行需要对应环境的访问权限。MCP 广场已部署完整的云托管服务，用户无需关心底层配置。
 
-### 方式一：本地开发（stdio 模式）
+### 本地开发
+
+如果你有自己的腾讯云 CloudBase 环境，可以基于本源码开发自己的 MCP Server：
 
 ```bash
-# 克隆仓库
-git clone git@github.com:Qiuzer/Hiito-MCP.git
+git clone https://github.com/Qiuzer/Hiito-MCP.git
 cd Hiito-MCP
-
-# 安装依赖
 npm install
 
-# 配置环境变量
+# 配置你自己的环境变量
 cp .env.example .env
-# 编辑 .env 文件，填入真实配置
-# 必需: TARGET_ENV_ID（hiito 生产环境 ID）
+# 编辑 .env，填入你自己的腾讯云环境 ID 和密钥
 
-# 编译 TypeScript
 npm run build
-
-# 启动服务（stdio 模式）
 npm start
 ```
 
----
-
-### 方式二：HTTP 服务器模式
-
-```bash
-# 配置环境变量后
-npm run start:http
-
-# 服务运行在 http://localhost:8080
-# 健康检查: http://localhost:8080/health
-# MCP 端点: http://localhost:8080/mcp
-```
-
-> **注意**：MCP Server 部署在独立的 `hiito-mcp-prod` 环境，通过云间调用访问 hiito 生产环境数据。
+> **注意**：使用你自己的密钥只能访问你自己环境的数据，无法访问 Hiito 的派对数据。这是腾讯云 IAM 鉴权的保护机制。
 
 ---
 
-## 🔧 配置说明
+## ✨ 功能
 
-### 环境变量
+### 🔍 `party_search_nearby` — 搜索附近派对
 
-| 变量名           | 必填 | 说明                                        | 示例值                 |
-| ---------------- | ---- | ------------------------------------------- | ---------------------- |
-| `TARGET_ENV_ID`  | ✅   | hiito 生产环境 ID（云间调用目标）           | `nut-4gpjbl8q5edaad32` |
-| `WXP_APP_ID`     | ✅   | 微信小程序 AppID                            | `wx25b365a4b50a0958`   |
-| `TRANSPORT_MODE` | ❌   | 传输模式：`stdio` 或 `http`（默认 `stdio`） | `stdio`                |
-| `PORT`           | ❌   | HTTP 模式监听端口（默认 `8080`）            | `8080`                 |
-| `TENCENT_SECRET_ID` | 🔒   | MCP 认证 Token（HTTP 模式推荐）             | -                      |
-| `NODE_ENV`       | ❌   | 环境模式：`production` 或 `development`     | `production`           |
-| `CORS_ORIGINS`   | ❌   | CORS 允许的源列表（逗号分隔）               | -                      |
+根据经纬度和搜索半径，查找附近的派对活动，返回派对名称、地点、距离等信息。
 
-> **架构说明**：MCP Server 部署在独立的 `hiito-mcp-prod` 环境（纯代码环境，不存数据），通过 `TARGET_ENV_ID` 云间调用 hiito 生产环境的数据。
+**参数：**
 
-完整配置说明请查看 `.env.example` 文件。
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `latitude` | number | ✅ | 纬度，-90 ~ 90 |
+| `longitude` | number | ✅ | 经度，-180 ~ 180 |
+| `radius` | number | ❌ | 搜索半径（米），默认 5000，最大 50000 |
+| `limit` | number | ❌ | 返回数量，默认 20，最大 50 |
+| `offset` | number | ❌ | 分页偏移，默认 0 |
 
----
-
-## 🎯 应用场景
-
-### 查询附近派对
+**示例对话：**
 
 ```
 用户: "附近有什么派对？"
-AI: 调用 party_search_nearby 工具（需要经纬度），返回附近派对列表
+AI: 调用 party_search_nearby（需要用户授权位置）
+
+用户: "上海外滩附近有什么车尾派对？"
+AI: 调用 party_search_nearby（latitude=31.2304, longitude=121.4737）
 ```
 
-```
-用户: "上海外滩附近有什么车尾派对？"
-AI: 调用 party_search_nearby 工具（latitude=31.2304, longitude=121.4737），返回附近派对列表
+**返回格式：**
+
+```markdown
+## 🎉 附近派对活动
+
+### 周末复古市集派对
+- 📍 **地点**: 上海市黄浦区外滩XX号
+- 📏 **距离**: 1200m
+- 🕐 **时间**: 2026/05/15 14:00
+
+---
 ```
 
 ---
 
-## 🔌 集成到 Claude Desktop
+## 🔌 接入 AI 客户端
 
-编辑 Claude Desktop 配置文件：
+### 方式一：直接配置（推荐）
 
-**macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
+支持 HTTP + SSE 传输模式的 AI 客户端，直接复制以下配置即可使用，**无需鉴权**：
+
+```json
+{
+  "mcpServers": {
+    "hiito": {
+      "type": "http",
+      "url": "https://hiito-mcp-server-254685-6-1375170188.sh.run.tcloudbase.com/mcp"
+    }
+  }
+}
+```
+
+**支持的客户端：**
+- Claude Desktop（新版支持 HTTP 模式）
+- Cursor
+- Cline
+- 其他支持 MCP HTTP 传输的客户端
+
+### 方式二：腾讯云 MCP 广场
+
+访问 [腾讯云 MCP 广场](https://cloud.tencent.com/developer/mcp) 搜索 **"螺母车尾派对"** 一键开通。
+
+### 本地开发模式
+
+如需本地调试，使用 stdio 模式：
 
 ```json
 {
   "mcpServers": {
     "hiito": {
       "command": "node",
-      "args": ["/path/to/MCP-Server/dist/index.js"],
-      "env": {
-        "TARGET_ENV_ID": "nut-4gpjbl8q5edaad32",
-        "WXP_APP_ID": "wx25b365a4b50a0958"
-      }
+      "args": ["/path/to/Hiito-MCP/dist/index.js"]
     }
   }
 }
 ```
 
-重启 Claude Desktop 后，即可使用 Hiito MCP 工具。
-
 ---
 
-## ☁️ 部署到腾讯云 MCP 广场
+## 🔒 安全说明
 
-### 方式一：云托管部署（推荐）
+### 为什么开源？
 
-1. 访问 [腾讯云 MCP 广场](https://cloud.tencent.com/developer/mcp)
-2. 点击 **"我是 MCP 开发者"** → **"上架 MCP"**
-3. 选择环境变量部署方式
-4. 填写以下配置：
+本项目源码开放的核心目的是**透明可审计**：
 
-```json
-{
-  "service": {
-    "framework": "express",
-    "containerPort": 8080
-  },
-  "envVariables": {
-    "TARGET_ENV_ID": "nut-4gpjbl8q5edaad32",
-    "WXP_APP_ID": "wx25b365a4b50a0958",
-    "TRANSPORT_MODE": "http",
-    "PORT": "8080",
-    "TENCENT_SECRET_ID": "your_secure_token"
-  }
-}
-```
+- 用户可以验证 MCP Server 只做**只读查询**，不会写入、修改或删除任何数据
+- 用户可以确认没有收集或上传任何个人隐私信息
+- 社区可以帮助发现和修复安全问题
 
-5. 提交审核
+### 数据安全保障
 
-详细文档请查看 👉 [MCP_SQUARE_DEPLOYMENT.md](MCP_SQUARE_DEPLOYMENT.md)
+| 安全层 | 机制 |
+|--------|------|
+| **传输层** | HTTPS 加密传输 |
+| **应用层** | 云函数白名单（仅允许调用 `post`） |
+| **数据层** | 只读操作，`readOnlyHint: true` |
+| **防护层** | 速率限制（15 分钟 / 100 次 / IP） |
 
-### 方式二：CloudBase 云函数部署
+### 服务安全
 
-部署到 `hiito-mcp-prod` 环境（独立 MCP Server 环境）：
+本服务部署在腾讯云 CloudBase 云托管环境：
 
-```bash
-# 1. 编译 TypeScript
-npm run build
-
-# 2. 部署云函数
-tcb fn deploy hiito-mcp-server --envId hiito-mcp-prod-xxxx
-```
-
-> **注意**：`hiito-mcp-prod` 是纯代码环境，不存储数据，通过云间调用访问 hiito 生产环境。
-
-详细步骤请查看 👉 [CLOUDBASE_DEPLOYMENT.md](CLOUDBASE_DEPLOYMENT.md)
+- **只读服务**：仅提供派对查询功能，不写入、不修改、不删除任何数据
+- **数据隔离**：通过腾讯云 IAM 确保不同环境间的数据隔离
+- **环境变量**：密钥通过 CloudBase 环境变量管理，源码中不包含任何敏感信息
 
 ---
 
 ## 🏗️ 技术架构
 
 ```
-┌─────────────────────────────────────────────────────┐
-│              用户在 AI 客户端                        │
-│  （Claude Desktop / Cursor / Cline / 其他）         │
-└────────────────────┬────────────────────────────┘
-                     │  MCP Protocol (JSON-RPC 2.0)
-                     ▼
-┌─────────────────────────────────────────────────────┐
-│           MCP Server（云函数/本地）                 │
-│      environment: hiito-mcp-prod-d7gw3um648ec2ad3a            │
-│  ┌────────────────────────────────────────────┐   │
-│  │  Transport Layer                             │   │
-│  │  ├── StdioServerTransport（本地模式）     │   │
-│  │  └── StreamableHTTPServerTransport        │   │
-│  │      （远程模式，HTTP 触发器）             │   │
-│  │                                              │   │
-│  │  Tools Layer                              │   │
-│  │  └── party_search_nearby                 │   │
-│  └────────────────────────────────────────────┘   │
-└────────────────────┬────────────────────────────┘
-                     │  云间调用（callFunction）
-                     ▼
-┌─────────────────────────────────────────────────────┐
-│           hiito 环境（生产）                        │
-│           environment: nut-4gpjbl8q5edaad32        │
-│                                                     │
-│  ┌────────────────────────────────────────────┐   │
-│  │  post 云函数                           │   │
-│  │  - 路由：QueryOrganizerForMCP                   │   │
-│  │  - 功能：地理位置查询（geoNear）           │   │
-│  └────────────────────────────────────────────┘   │
-│                                                     │
-│  ┌────────────────────────────────────────────┐   │
-│  │  数据库集合                                │   │
-│  │  - party_sessions（派对数据）             │   │
-│  │  - organizer_bios（主办方资料）           │   │
-│  └────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────┘
+┌───────────────────────────────────┐
+│        AI 客户端                    │
+│  (Claude / Cursor / Cline / ...)  │
+└──────────────┬────────────────────┘
+               │ MCP Protocol (JSON-RPC 2.0)
+               ▼
+┌───────────────────────────────────┐
+│     MCP Server（云托管）            │
+│                                   │
+│  ┌─────────────────────────────┐ │
+│  │  Transport                   │ │
+│  │  ├── Stdio（本地模式）       │ │
+│  │  └── Streamable HTTP（远程） │ │
+│  │                              │ │
+│  │  Tools                       │ │
+│  │  └── party_search_nearby    │ │
+│  └─────────────────────────────┘ │
+└──────────────┬────────────────────┘
+               │ 云间调用（callFunction）
+               │ 腾讯云 IAM 鉴权
+               ▼
+┌───────────────────────────────────┐
+│     Hiito 生产环境                  │
+│                                   │
+│  ┌─────────────────────────────┐ │
+│  │  云函数（查询路由）           │ │
+│  │  └── 地理位置查询（geoNear） │ │
+│  └─────────────────────────────┘ │
+│                                   │
+│  ┌─────────────────────────────┐ │
+│  │  数据库                      │ │
+│  │  ├── party_sessions         │ │
+│  │  └── organizer_bios         │ │
+│  └─────────────────────────────┘ │
+└───────────────────────────────────┘
 ```
 
 ### 技术栈
 
-| 组件           | 技术栈                                  |
-| -------------- | --------------------------------------- |
-| **协议标准**   | Model Context Protocol (MCP) 1.0        |
-| **传输模式**   | stdio / Streamable HTTP                 |
-| **运行环境**   | Node.js 18+ / CloudBase 云函数          |
-| **MCP SDK**    | `@modelcontextprotocol/sdk`             |
-| **云开发 SDK** | `@cloudbase/node-sdk`                   |
-| **小程序平台** | 微信小程序（AppID: wx25b365a4b50a0958） |
-| **构建工具**   | TypeScript + Docker                     |
+| 组件 | 技术 |
+|------|------|
+| 协议标准 | Model Context Protocol (MCP) 1.0 |
+| 传输模式 | HTTP + SSE / stdio |
+| 运行环境 | Node.js 18+ / CloudBase 云托管 |
+| MCP SDK | `@modelcontextprotocol/sdk` |
+| 云开发 SDK | `@cloudbase/node-sdk` |
+| 构建工具 | TypeScript |
 
 ---
 
@@ -228,128 +215,45 @@ tcb fn deploy hiito-mcp-server --envId hiito-mcp-prod-xxxx
 ```
 MCP-Server/
 ├── src/                          # 源代码
-│   ├── __tests__/                # 单元测试
-│   │   ├── health.test.ts
-│   │   └── schemas.test.ts
 │   ├── index.ts                 # MCP Server 入口
 │   ├── types.ts                 # TypeScript 类型定义
-│   ├── tools/                   # Tool 定义
+│   ├── tools/
 │   │   ├── party_tools.ts      # 派对搜索工具
 │   │   └── formatters.ts       # 响应格式化
-│   ├── schemas/                 # 参数校验 Schema
-│   │   └── index.ts            # Schema 导出
-│   ├── services/               # 后端服务
+│   ├── schemas/
+│   │   └── index.ts            # Zod 参数校验 Schema
+│   ├── services/
 │   │   └── cloudbase.ts        # CloudBase 云函数调用
-│   └── utils/                  # 工具函数
-│       └── errors.ts          # 错误处理
-├── dist/                        # 编译输出
-├── functions/                   # CloudBase 云函数独立部署包
-│   └── hiito-mcp-server/       # 云函数项目（含独立 package.json、tsconfig.json）
-├── config/                      # 配置文件
-│   └── mcporter.json           # MCP 配置
-├── cloudbaserc.json             # CloudBase 项目配置
-├── Dockerfile                   # 容器化配置
-├── scf_bootstrap               # 云函数启动脚本
-├── deploy.sh                    # 部署脚本
-├── vitest.config.ts             # Vitest 测试配置
-├── .env.example                 # 环境变量模板
-├── package.json                 # 项目配置
-├── tsconfig.json               # TypeScript 配置
-├── test-*.mjs                  # MCP 测试脚本
-├── DEPLOY_GUIDE.md             # 部署指南
-├── LICENSE                     # MIT 许可证
-└── README.md                   # 项目文档
+│   └── utils/
+│       └── errors.ts            # 错误处理
+├── package.json
+├── tsconfig.json
+└── vitest.config.ts
 ```
-
----
-
-## 🔒 安全特性
-
-- **认证中间件**: HTTP 端点支持 Bearer Token 认证（`TENCENT_SECRET_ID`），生产环境推荐配置
-- **速率限制**: 15 分钟窗口内每 IP 最多 100 次请求（express-rate-limit）
-- **安全头**: Helmet 中间件自动添加安全响应头
-- **CORS**: 可配置的跨域策略（`CORS_ORIGINS`）
-- **健康检查**: `/health` 端点不泄露任何敏感配置信息
-- **会话管理**: 自动清理过期 MCP 会话，防止内存泄漏
 
 ---
 
 ## 🧪 测试
 
-### 本地测试 HTTP 模式
-
 ```bash
-# 启动服务
-TRANSPORT_MODE=http npm start
+# 单元测试
+npm test
 
-# 健康检查
-curl http://localhost:8080/health
-
-# 预期返回：
-# {
-#   "status": "ok",
-#   "service": "hiito-mcp-server",
-#   "version": "1.0.0",
-#   "timestamp": "2026-05-07T...",
-#   "uptime": 42.5
-# }
-```
-
-### 测试 MCP 端点
-
-使用 [MCP Inspector](https://github.com/modelcontextprotocol/inspector)：
-
-```bash
+# 使用 MCP Inspector 交互式调试
 npx @modelcontextprotocol/inspector
 ```
-
-然后连接到 `http://localhost:8080/mcp`
-
----
-
-## 🤝 贡献指南
-
-欢迎贡献代码、提出建议或报告问题！
-
-1. Fork 本仓库
-2. 创建特性分支 (`git checkout -b feature/AmazingFeature`)
-3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
-4. 推送到分支 (`git push origin feature/AmazingFeature`)
-5. 开启 Pull Request
-
----
-
-## 📝 更新日志
-
-### v3.0 (2026-05-09)
-
-> **简化架构**：只保留核心搜索功能
-
-- ✅ 只保留 `party_search_nearby` 工具（搜索附近派对）
-- ✅ 移除已废弃工具：`generate_deep_link`、`get_party_detail`、`find_parties`、`find_organizer`
-- ✅ 简化代码结构：所有工具定义集中在 `party_tools.ts`
-- ✅ 传输层支持：StdioServerTransport + StreamableHTTPServerTransport
-- ✅ 数据源：通过 `post` 云函数 `QueryOrganizerForMCP` 路由查询
-
-### v1.0.0 (2026-05-07)
-
-- ✅ 初始版本发布
-- ✅ 支持 6 个 MCP 工具
-- ✅ 支持 stdio、HTTP、SSE 三种传输模式
-- ✅ 支持 Docker 容器化部署
-- ✅ 集成 CloudBase 云开发
 
 ---
 
 ## 📄 许可证
 
-[MIT License](LICENSE)
+[MIT License](LICENSE) — 你可以自由使用本源码作为模板开发自己的 MCP Server，但无法通过本源码访问 Hiito 的数据。
 
 ---
 
 ## 🔗 相关链接
 
-- **微信小程序**: 螺母车尾派对（搜索 "Hiito" 或 "螺母车尾派对"）
+- **微信小程序**: 搜索 "螺母车尾派对" 或 "Hiito"
 - **MCP 协议文档**: https://modelcontextprotocol.io/
 - **CloudBase 文档**: https://docs.cloudbase.net/
 - **问题反馈**: https://github.com/Qiuzer/Hiito-MCP/issues

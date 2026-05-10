@@ -10,11 +10,13 @@ export const PartySearchNearbySchema = z.object({
   latitude: z.number()
     .min(-90, '纬度范围 -90 ~ 90')
     .max(90)
-    .describe('纬度，例如 39.9042（北京市中心）'),
+    .default(39.9042)
+    .describe('纬度，例如 39.9042（北京市中心），默认 39.9042'),
   longitude: z.number()
     .min(-180, '经度范围 -180 ~ 180')
     .max(180)
-    .describe('经度，例如 116.4074（北京市中心）'),
+    .default(116.4074)
+    .describe('经度，例如 116.4074（北京市中心），默认 116.4074'),
   radius: z.number()
     .min(100, '半径最小 100 米')
     .max(50000, '半径最大 50 公里')

@@ -4,6 +4,10 @@ node_modules/
 # Build output
 dist/
 
+# MCP 配置文件（包含敏感信息）
+config/mcporter.json
+config/*.local.json
+
 # Environment files - NEVER commit
 .env
 .env.local
