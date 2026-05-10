@@ -48,22 +48,29 @@ export function formatPartyListMarkdown(
   const result: string[] = ['## 🎉 附近派对活动\n'];
 
   sortedParties.forEach((party) => {
-    // 提取字段并解构默认值
-    const {
-      title = '未知派对',
-      address = '未知地点',
-      start_time,
-      distance,
-      status,
-      current_participants = 0,
-      max_participants = '∞',
-      url_scheme,
-      url_link
-    } = party;
+    // 提取字段 - 兼容多种后端返回格式
+    // 后端可能返回: { name, address: string|object, operatingHours, ... }
+    // 或: { title, address: string, start_time, ... }
+    const title = party.name || party.title || '未知派对';
+    
+    // 地址可能是字符串或嵌套对象 { street, city, country, postalCode }
+    const address = typeof party.address === 'object' && party.address !== null
+      ? `${(party.address as any).street || ''}, ${(party.address as any).city || ''}`.replace(/^, |, $/g, '') || '未知地点'
+      : (party.address || '未知地点');
+    
+    // 时间可能是 start_time 或 operatingHours: { date, startTime, endTime }
+    let startTimeRaw = party.start_time;
+    if (!startTimeRaw && party.operatingHours) {
+      const oh = party.operatingHours as any;
+      startTimeRaw = oh.startTime ? `${oh.date} ${oh.startTime}` : oh.date;
+    }
 
-    const startTimeStr = formatTime(start_time);
+    const distance = party.distance;
+    const url_scheme = party.url_scheme;
+    const url_link = party.url_link;
+
+    const startTimeStr = formatTime(startTimeRaw);
     const distanceStr = typeof distance === 'number' ? `${Math.round(distance)}m` : '距离未知';
-    const statusStr = getStatusText(status);
 
     // 使用模板字符串构建内容块
     const partyBlock = [
@@ -71,11 +78,9 @@ export function formatPartyListMarkdown(
       `- 📍 **地点**: ${address}`,
       `- 📏 **距离**: ${distanceStr}`,
       `- 🕐 **时间**: ${startTimeStr}`,
-      `- 👥 **人数**: ${current_participants}/${max_participants}`,
-      `- 🏷️ **状态**: ${statusStr}`
     ];
 
-    // 处理链接部分
+    // 处理链接部分 - 只在有 URL 时输出
     if (url_scheme || url_link) {
       partyBlock.push('\n#### 🔗 一键参加派对');
       if (url_scheme) partyBlock.push(`[打开微信派对](${url_scheme})`);

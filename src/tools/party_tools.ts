@@ -23,7 +23,6 @@ export function registerPartyTools(server: McpServer) {
       title: 'Search Nearby Parties',
       description: `搜索附近的派对活动（车尾派对/螺母派对）。根据经纬度和搜索半径返回派对列表，包含名称、地点、距离、时间等信息。\n\n示例：\n- "北京朝阳公园附近有什么派对" → latitude=39.9342, longitude=116.4103, radius=5000\n- "上海外滩周边10公里内的派对" → latitude=31.2304, longitude=121.4737, radius=10000\n\n注意：仅支持查询，不支持创建派对。`,
       inputSchema: PartySearchNearbySchema,
-      outputSchema: z.object({ content: z.object({ type: z.literal('string') }) }),
       annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     },
     async (args) => {
@@ -61,6 +60,9 @@ export function registerPartyTools(server: McpServer) {
           offset: normalizedOffset,
         },
       });
+
+      // 调试日志
+      console.log('[DEBUG] callTargetFunction result:', JSON.stringify(result, null, 2));
 
       if (result.code !== 0) {
         const errorMsg = result.msg || '未知错误';
@@ -106,17 +108,32 @@ export function registerPartyTools(server: McpServer) {
           limit,
           offset: normalizedOffset,
         },
-        parties: partiesList.map((p) => ({
-          title: p.title || '未知派对',
-          address: p.address || '未知地点',
-          start_time: p.start_time,
-          distance: p.distance,
-          status: p.status,
-          current_participants: p.current_participants || 0,
-          max_participants: p.max_participants,
-          url_scheme: p.url_scheme,
-          url_link: p.url_link,
-        })),
+        parties: partiesList.map((p) => {
+          // 兼容多种地址格式：字符串 或 { street, city, ... }
+          const addressStr = typeof p.address === 'object' && p.address !== null
+            ? `${(p.address as any).street || ''}, ${(p.address as any).city || ''}`.replace(/^, |, $/g, '') || '未知地点'
+            : (typeof p.address === 'string' ? p.address : '未知地点');
+
+          // 兼容多种时间格式
+          let startTime = '';
+          if (p.operatingHours) {
+            const oh = p.operatingHours as any;
+            startTime = oh.startTime ? `${oh.date} ${oh.startTime}` : (oh.date || '');
+          } else if (p.start_time) {
+            startTime = String(p.start_time);
+          }
+
+          // URL 只在存在时输出
+          const hasUrl = p.url_scheme || p.url_link;
+
+          return {
+            title: p.name || p.title || '未知派对',
+            address: addressStr,
+            start_time: startTime,
+            distance: p.distance,
+            url: hasUrl ? { url_scheme: p.url_scheme, url_link: p.url_link } : undefined,
+          };
+        }),
         count: partiesList.length,
         offset: normalizedOffset,
         total: totalCount,
@@ -125,12 +142,16 @@ export function registerPartyTools(server: McpServer) {
       };
 
       const formattedText = formatPartyListMarkdown(partiesList, response_format);
+
+      // 调试日志
+      console.log('[DEBUG] partiesList:', partiesList.length);
+      console.log('[DEBUG] formattedText:', formattedText.substring(0, 200));
+
       return {
         content: [{
           type: 'text',
           text: truncateResponse(formattedText),
         }],
-        structuredContent: structuredOutput,
       };
     }
   );
