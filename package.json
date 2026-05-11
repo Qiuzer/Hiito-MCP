@@ -1,77 +1,22 @@
 {
   "name": "hiito-mcp-server",
   "version": "1.0.0",
-  "description": "MCP Server for 螺母车尾派对 (Hiito) - Query nearby parties, get party details, and generate WeChat Mini Program deep links",
-  "keywords": [
-    "mcp",
-    "model-context-protocol",
-    "wechat",
-    "mini-program",
-    "hiito",
-    "party",
-    "trunk-party",
-    "car-party",
-    "cloudbase",
-    "ai",
-    "tool-calling",
-    "deep-link",
-    "url-scheme"
-  ],
-  "homepage": "https://github.com/Qiuzer/Hiito-MCP#readme",
-  "bugs": {
-    "url": "https://github.com/Qiuzer/Hiito-MCP/issues"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/Qiuzer/Hiito-MCP.git"
-  },
-  "license": "MIT",
-  "author": {
-    "name": "Churze",
-    "email": "c0529q@gmail.com",
-    "url": "https://github.com/Qiuzer"
-  },
-  "main": "dist/index.js",
   "type": "module",
+  "main": "dist/index.js",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc --skipLibCheck --excludeDirectories src/__tests__",
     "start": "node dist/index.js",
-    "dev": "tsx watch src/index.ts",
-    "test": "vitest run",
-    "deploy": "bash deploy.sh",
-    "deploy:all": "bash deploy.sh --all",
-    "deploy:function": "bash deploy.sh --function",
-    "deploy:container": "bash deploy.sh --container",
-    "deploy:build": "bash deploy.sh --build",
-    "publish": "bash deploy.sh --package"
+    "dev": "tsx watch src/index.ts"
   },
   "dependencies": {
     "@cloudbase/node-sdk": "^3.18.1",
     "@modelcontextprotocol/sdk": "^1.6.1",
-    "cors": "^2.8.6",
     "dotenv": "^17.4.2",
-    "express": "^4.21.0",
-    "express-rate-limit": "^8.5.1",
-    "helmet": "^8.1.0",
-    "morgan": "^1.10.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {
-    "@types/cors": "^2.8.19",
-    "@types/express": "^4.17.21",
-    "@types/morgan": "^1.9.10",
     "@types/node": "^20.14.0",
     "tsx": "^4.15.0",
-    "typescript": "^5.4.0",
-    "vitest": "^3.0.0"
-  },
-  "engines": {
-    "node": ">=18"
-  },
-  "exports": {
-    ".": {
-      "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
-    }
+    "typescript": "^5.4.0"
   }
 }

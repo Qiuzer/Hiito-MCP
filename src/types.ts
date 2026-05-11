@@ -1,17 +1,11 @@
-/**
- * Hiito MCP Server Type Definitions
- */
-
-// API Response wrapper
-export interface CloudFunctionResponse<T = unknown> {
-  code: number;
+export interface CloudFunctionResponse<T> {
+  code: number | string;
   msg: string;
-  data?: T;
+  data?: T; // 将其变为可选（添加问号）
+  upstream_code?: string;
 }
 
-// Response format options
 export enum ResponseFormat {
-  JSON = 'json',
   MARKDOWN = 'markdown',
-  TEXT = 'text'
+  JSON = 'json'
 }

@@ -1,67 +1,55 @@
-# Multi-stage build for smaller image size
+# 第一阶段：构建阶段 (Builder)
 FROM node:20-alpine AS builder
 
-# Set working directory
 WORKDIR /app
 
-# Copy package files first (leverage Docker cache)
-COPY package*.json ./
-COPY tsconfig.json ./
+# 1. 复制依赖清单
+COPY package*.json tsconfig.json ./
 
-# Install dependencies (use npm install for Dockerfile builds)
-RUN npm install --production=false
+# 2. 安装所有依赖（包含开发依赖，以便编译 TypeScript）
+RUN npm install
 
-# Copy source code
+# 3. 复制源码
 COPY src ./src/
 
-# Build TypeScript
+# 4. 执行编译
+# 优化点：通过 --skipLibCheck 减少内存占用，并确保 tsconfig.json 已经排除了 __tests__ 目录
+# 如果你无法修改 tsconfig.json，可以在此处使用：RUN npx tsc --skipLibCheck --excludeDirectories src/__tests__
 RUN npm run build
 
 # ============================================
 
-# Production stage
+# 第二阶段：运行阶段 (Production)
 FROM node:20-alpine
 
 WORKDIR /app
 
-# Install wget for health checks (curl not needed - only wget used in HEALTHCHECK)
+# 安装 wget 用于腾讯云健康检查（腾讯云 K8s 探针默认使用）
 RUN apk add --no-cache wget
 
-# Copy package files
+# 1. 只复制生产环境需要的依赖清单
 COPY package*.json ./
 
-# Create non-root user first (must exist before chown)
+# 2. 创建非 root 用户，提升安全性
 RUN addgroup -S nodejs && adduser -S nodejs -G nodejs
-
-# Create directory with proper permissions
 RUN mkdir -p /app/node_modules && chown -R nodejs:nodejs /app
 
-# Install only production dependencies
+# 3. 只安装生产环境依赖（不安装 vitest 等）
 RUN npm install --production=true
 
-# Copy built files from builder
+# 4. 从构建阶段只复制编译后的产物 (dist 目录)
 COPY --from=builder --chown=nodejs:nodejs /app/dist ./dist/
 
+# 切换到非 root 用户
 USER nodejs
 
-# Environment variables with defaults
-ENV WECHAT_APP_ID=
-ENV CLOUD_ENV_ID=
-ENV TARGET_ENV_ID=
-ENV TENCENT_SECRET_ID=
+# 环境变量配置
 ENV NODE_ENV=production
 ENV TRANSPORT_MODE=http
 ENV PORT=8080
-ENV CHARACTER_LIMIT=25000
-ENV REQUEST_TIMEOUT_MS=30000
 
-# Health check - port must match CMD PORT (default 8080, non-privileged)
-# CloudBase K8s probe overrides this with its own healthCheckConfig
-HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:${PORT:-8080}/health || exit 1
-
-# Expose port 8080 (non-privileged, CloudBase will map to port 80 externally)
+# 暴露端口
 EXPOSE 8080
 
-# Start the server on port 8080
+# 启动服务
 CMD ["node", "dist/index.js"]
